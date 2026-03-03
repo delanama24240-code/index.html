@@ -53,6 +53,38 @@
 
         let scanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 250 });
         scanner.render(onScanSuccess);
+        
+        // Add this logic to your GitHub Scanner success callback
+function onScanSuccess(decodedText) {
+    const firebaseURL = "https://attendance-monitoring-84aeb-default-rtdb.firebaseio.com/scans.json";
+    
+    const scanData = {
+        qrContent: decodedText,
+        timestamp: new Date().toLocaleTimeString(),
+        date: new Date().toLocaleDateString()
+    };
+
+    // 1. Save to Firebase
+    fetch(firebaseURL, {
+        method: 'POST',
+        body: JSON.stringify(scanData)
+    })
+    .then(response => {
+        alert("Scan Saved Successfully!");
+        
+        // 2. Redirect back to Dashboard
+        const urlParams = new URLSearchParams(window.location.search);
+        const returnTarget = urlParams.get('returnTo');
+        
+        if (returnTarget) {
+            window.location.href = decodeURIComponent(returnTarget);
+        } else {
+            // Fallback if no return URL found
+            window.history.back();
+        }
+    })
+    .catch(error => console.error('Firebase Error:', error));
+}
     </script>
 </body>
 </html>
