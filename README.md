@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+
 <html>
 <head>
     <title>QR Attendance Scanner</title>
@@ -43,75 +43,80 @@
     <script>
         const FB_URL = "https://attendance-monitoring-84aeb-default-rtdb.firebaseio.com/";
 
-        async function onScanSuccess(decodedText) {
-            const statusDiv = document.getElementById('status');
-            const infoCard = document.getElementById('student-card');
+    async function onScanSuccess(decodedText) {
+        const statusDiv = document.getElementById('status');
+        const infoCard = document.getElementById('student-card');
+        
+        try {
+            // 1. UNPACK THE DATA FROM THE QR
+            // The QR now contains a JSON string with: fname, lname, lrn, grade, pic
+            const student = JSON.parse(decodedText);
             
-            statusDiv.className = "mt-4 p-3 rounded bg-warning text-dark";
-            statusDiv.innerText = "Verifying LRN: " + decodedText + "...";
+            // 2. DISPLAY DATA IMMEDIATELY IN THE ID FORM
+            document.getElementById('disp-name').innerText = `${student.firstName} ${student.lastName}`;
+            document.getElementById('disp-lrn').innerText = student.lrn;
+            document.getElementById('disp-level').innerText = student.grade;
+            document.getElementById('disp-section').innerText = student.adviser || "N/A";
 
-            try {
-                // 1. CHECK IF STUDENT IS REGISTERED
-                // Assuming your students are stored under /students/[lrn]
-                const response = await fetch(`${FB_URL}students/${decodedText}.json`);
-                const studentData = await response.json();
-
-                if (!studentData) {
-                    // NOT REGISTERED
-                    statusDiv.className = "mt-4 p-3 rounded bg-danger text-white";
-                    statusDiv.innerText = "❌ UNREGISTERED QR CODE";
-                    infoCard.classList.add('d-none');
-                    return;
-                }
-
-                // 2. IF REGISTERED, SHOW INFO ON THE SIDE
-                document.getElementById('disp-name').innerText = studentData.name || "N/A";
-                document.getElementById('disp-lrn').innerText = decodedText;
-                document.getElementById('disp-level').innerText = studentData.level || "N/A";
-                document.getElementById('disp-section').innerText = studentData.section || "N/A";
-                
-                infoCard.classList.remove('d-none');
-
-                // 3. CALCULATE ATTENDANCE STATUS
-                const now = new Date();
-                const dateStr = now.toISOString().split('T')[0];
-                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                
-                // Logic: Late after 6:30 AM (06:31 onwards)
-                const isLate = (now.getHours() > 6 || (now.getHours() === 6 && now.getMinutes() >= 31));
-                const attendanceStatus = isLate ? "Late" : "Present";
-                
-                document.getElementById('disp-status').innerText = attendanceStatus;
-                document.getElementById('disp-status').className = isLate ? "badge bg-danger" : "badge bg-success";
-
-                // 4. SAVE TO ATTENDANCE LOG
-                await fetch(`${FB_URL}attendance/${dateStr}/${decodedText}.json`, {
-                    method: 'PUT',
-                    body: JSON.stringify({
-                        name: studentData.name,
-                        lrn: decodedText,
-                        time: timeStr,
-                        date: dateStr,
-                        status: attendanceStatus
-                    })
-                });
-
-                statusDiv.className = "mt-4 p-3 rounded bg-success text-white";
-                statusDiv.innerText = `✅ Attendance Recorded for ${studentData.name}`;
-
-            } catch (err) {
-                console.error(err);
-                statusDiv.className = "mt-4 p-3 rounded bg-danger text-white";
-                statusDiv.innerText = "System Error: " + err.message;
+            // Update/Add the Photo to the ID form
+            let photoImg = document.getElementById('student-photo-display');
+            if (!photoImg) {
+                photoImg = document.createElement('img');
+                photoImg.id = 'student-photo-display';
+                photoImg.className = "rounded-circle border border-info mb-3";
+                photoImg.style = "width: 100px; height: 100px; object-fit: cover; display: block; margin: 0 auto;";
+                infoCard.querySelector('h4').after(photoImg);
             }
-        }
+            photoImg.src = student.picture || "";
 
-        let scanner = new Html5QrcodeScanner("reader", { 
-            fps: 10, 
-            qrbox: { width: 250, height: 250 },
-            rememberLastUsedCamera: true
-        });
-        scanner.render(onScanSuccess);
+            // Show the card
+            infoCard.classList.remove('d-none');
+
+            // 3. CALCULATE ATTENDANCE LOGIC
+            const now = new Date();
+            const dateStr = now.toISOString().split('T')[0];
+            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            
+            // Late threshold: 6:31 AM
+            const isLate = (now.getHours() > 6 || (now.getHours() === 6 && now.getMinutes() >= 31));
+            const attendanceStatus = isLate ? "Late" : "Present";
+            
+            document.getElementById('disp-status').innerText = attendanceStatus;
+            document.getElementById('disp-status').className = isLate ? "badge bg-danger" : "badge bg-success";
+
+            // 4. SAVE TO FIREBASE
+            // We use student.lrn from the QR data
+            statusDiv.className = "mt-4 p-3 rounded bg-primary text-white";
+            statusDiv.innerText = "Saving attendance...";
+
+            await fetch(`${FB_URL}attendance/${dateStr}/${student.lrn}.json`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    name: `${student.firstName} ${student.lastName}`,
+                    lrn: student.lrn,
+                    time: timeStr,
+                    date: dateStr,
+                    status: attendanceStatus
+                })
+            });
+
+            statusDiv.className = "mt-4 p-3 rounded bg-success text-white";
+            statusDiv.innerText = `✅ Recorded: ${student.lastName}`;
+
+        } catch (err) {
+            // If JSON.parse fails, it means the QR is not a valid student QR
+            console.error("Scan Error:", err);
+            statusDiv.className = "mt-4 p-3 rounded bg-danger text-white";
+            statusDiv.innerText = "❌ UNREGISTERED QR CODE";
+            infoCard.classList.add('d-none');
+        }
+    }
+
+    let scanner = new Html5QrcodeScanner("reader", { 
+        fps: 15, 
+        qrbox: { width: 250, height: 250 }
+    });
+    scanner.render(onScanSuccess);
     </script>
 </body>
 </html>
