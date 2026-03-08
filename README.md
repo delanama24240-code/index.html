@@ -23,6 +23,8 @@
             width: 120px; height: 120px; object-fit: cover;
             border: 3px solid #6f42c1; padding: 3px;
         }
+        /* Add a pulse effect when searching */
+        .searching { opacity: 0.5; pointer-events: none; }
     </style>
 </head>
 <body class="text-white">
@@ -67,6 +69,7 @@
     </div>
 
     <script>
+        // Use your specific Firebase URL
         const FB_URL = "https://attendance-monitoring-84aeb-default-rtdb.firebaseio.com/";
 
         async function onScanSuccess(decodedText) {
@@ -74,45 +77,63 @@
             const infoCard = document.getElementById('student-card');
             
             try {
-                // 1. Get the LRN from the tiny QR code
-                const qrData = JSON.parse(decodedText);
-                const scannedLrn = qrData.lrn;
-
-                if (!scannedLrn) throw new Error("No LRN found");
-
-                statusDiv.innerText = "🔍 Fetching Profile...";
-
-                // 2. Fetch the FULL DATA (photo, level, etc.) from Firebase
-                const response = await fetch(`${FB_URL}students/${scannedLrn}.json`);
-                const student = await response.json();
-
-                if (!student) {
-                    statusDiv.innerText = "❌ STUDENT NOT FOUND";
+                // 1. Validate if the QR is a JSON object (System Format)
+                let qrData;
+                try {
+                    qrData = JSON.parse(decodedText);
+                } catch (e) {
+                    statusDiv.innerHTML = "<span class='text-warning'>⚠️ INVALID SYSTEM QR</span>";
+                    infoCard.classList.add('d-none');
                     return;
                 }
 
-                // 3. UI Update using fetched data
+                const scannedLrn = qrData.lrn;
+                if (!scannedLrn) {
+                    statusDiv.innerHTML = "<span class='text-warning'>⚠️ WRONG QR FORMAT</span>";
+                    return;
+                }
+
+                statusDiv.innerText = "🔍 Verifying Student...";
+                infoCard.classList.add('searching');
+
+                // 2. Fetch the FULL DATA from Firebase using the LRN
+                const response = await fetch(`${FB_URL}students/${scannedLrn}.json`);
+                const student = await response.json();
+
+                // 3. Security Check: Does student exist in our DB?
+                if (!student) {
+                    statusDiv.innerHTML = "<span class='text-danger'>❌ UNAUTHORIZED / NOT FOUND</span>";
+                    infoCard.classList.add('d-none');
+                    return;
+                }
+
+                // 4. Update UI with verified data
                 document.getElementById('disp-name').innerText = `${student.firstName} ${student.lastName}`.trim();
                 document.getElementById('disp-lrn').innerText = student.lrn;
-                document.getElementById('disp-level-section').innerText = `${student.level || "N/A"} - ${student.section || "N/A"}`;
+                
+                // Use 'level' as registered in your AddStudent payload
+                const levelSection = student.level || student.grade || "N/A";
+                document.getElementById('disp-level-section').innerText = levelSection;
                 document.getElementById('disp-adviser').innerText = student.adviser || "Not Assigned";
+                
+                // Handle the Base64 picture
                 document.getElementById('student-photo-display').src = student.picture || "";
 
-                infoCard.classList.remove('d-none');
+                infoCard.classList.remove('d-none', 'searching');
 
-                // 4. Attendance Logic
+                // 5. Attendance Logic (6:31 AM Late Threshold)
                 const now = new Date();
                 const dateStr = now.toISOString().split('T')[0];
-                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
                 
                 const isLate = (now.getHours() > 6 || (now.getHours() === 6 && now.getMinutes() >= 31));
                 const attendanceStatus = isLate ? "Late" : "Present";
                 
                 const statusBadge = document.getElementById('disp-status');
                 statusBadge.innerText = attendanceStatus;
-                statusBadge.className = isLate ? "badge bg-danger" : "badge bg-success";
+                statusBadge.className = isLate ? "badge bg-danger" : "badge bg-success shadow-sm";
 
-                // 5. Save Attendance Log
+                // 6. Log the Attendance to Firebase
                 await fetch(`${FB_URL}attendance/${dateStr}/${scannedLrn}.json`, {
                     method: 'PUT',
                     body: JSON.stringify({
@@ -120,20 +141,25 @@
                         lrn: scannedLrn,
                         time: timeStr,
                         status: attendanceStatus,
-                        level: student.level || "N/A",
-                        section: student.section || "N/A"
+                        level: levelSection,
+                        timestamp: ServerValue.TIMESTAMP // Optional: if you use FB SDK
                     })
                 });
 
-                statusDiv.innerText = `✅ Verified: ${student.lastName}`;
+                statusDiv.innerHTML = `<span class="text-success">✅ Welcome, ${student.lastName}!</span>`;
 
             } catch (err) {
-                console.error(err);
-                statusDiv.innerText = "❌ ERROR: INVALID QR CODE";
+                console.error("Scan Error:", err);
+                statusDiv.innerText = "❌ Scanner Error. Please try again.";
             }
         }
 
-        let scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
+        // Initialize Scanner
+        let scanner = new Html5QrcodeScanner("reader", { 
+            fps: 15, // Faster frame rate for smoother scanning
+            qrbox: { width: 250, height: 250 },
+            aspectRatio: 1.0 
+        });
         scanner.render(onScanSuccess);
     </script>
 </body>
