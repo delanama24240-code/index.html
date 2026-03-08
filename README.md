@@ -54,7 +54,7 @@
             // 2. DISPLAY DATA IMMEDIATELY IN THE ID FORM
             document.getElementById('disp-name').innerText = `${student.firstName} ${student.lastName}`;
             document.getElementById('disp-lrn').innerText = student.lrn;
-            document.getElementById('disp-level').innerText = student.grade;
+            document.getElementById('disp-level').innerText = student.level;
             document.getElementById('disp-section').innerText = student.adviser || "N/A";
 
             // Update/Add the Photo to the ID form
