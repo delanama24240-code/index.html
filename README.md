@@ -74,38 +74,37 @@
             const infoCard = document.getElementById('student-card');
             
             try {
-                const student = JSON.parse(decodedText);
-                
-                // Fix "undefined" by providing fallbacks
-                const firstName = student.firstName || "";
-                const lastName = student.lastName || "";
-                const lrn = student.lrn || "N/A";
-                const level = student.level || "N/A";
-                const section = student.section || "N/A";
-                const adviser = student.adviser || "Not Assigned";
-                const photo = student.picture || student.pic || "";
+                // 1. Get the LRN from the tiny QR code
+                const qrData = JSON.parse(decodedText);
+                const scannedLrn = qrData.lrn;
 
-                // Update UI
-                document.getElementById('disp-name').innerText = `${firstName} ${lastName}`.trim() || "Unknown Student";
-                document.getElementById('disp-lrn').innerText = lrn;
-                
-                // Level and Section Combined
-                document.getElementById('disp-level-section').innerText = `${level} - ${section}`;
-                
-                // Adviser Separate
-                document.getElementById('disp-adviser').innerText = adviser;
+                if (!scannedLrn) throw new Error("No LRN found");
 
-                // Photo Update
-                document.getElementById('student-photo-display').src = photo;
+                statusDiv.innerText = "🔍 Fetching Profile...";
+
+                // 2. Fetch the FULL DATA (photo, level, etc.) from Firebase
+                const response = await fetch(`${FB_URL}students/${scannedLrn}.json`);
+                const student = await response.json();
+
+                if (!student) {
+                    statusDiv.innerText = "❌ STUDENT NOT FOUND";
+                    return;
+                }
+
+                // 3. UI Update using fetched data
+                document.getElementById('disp-name').innerText = `${student.firstName} ${student.lastName}`.trim();
+                document.getElementById('disp-lrn').innerText = student.lrn;
+                document.getElementById('disp-level-section').innerText = `${student.level || "N/A"} - ${student.section || "N/A"}`;
+                document.getElementById('disp-adviser').innerText = student.adviser || "Not Assigned";
+                document.getElementById('student-photo-display').src = student.picture || "";
 
                 infoCard.classList.remove('d-none');
 
-                // Attendance Logic
+                // 4. Attendance Logic
                 const now = new Date();
                 const dateStr = now.toISOString().split('T')[0];
                 const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 
-                // Late Threshold 6:31 AM
                 const isLate = (now.getHours() > 6 || (now.getHours() === 6 && now.getMinutes() >= 31));
                 const attendanceStatus = isLate ? "Late" : "Present";
                 
@@ -113,25 +112,24 @@
                 statusBadge.innerText = attendanceStatus;
                 statusBadge.className = isLate ? "badge bg-danger" : "badge bg-success";
 
-                // Save to Firebase
-                statusDiv.innerText = "Recording...";
-                await fetch(`${FB_URL}attendance/${dateStr}/${lrn}.json`, {
+                // 5. Save Attendance Log
+                await fetch(`${FB_URL}attendance/${dateStr}/${scannedLrn}.json`, {
                     method: 'PUT',
                     body: JSON.stringify({
-                        name: `${firstName} ${lastName}`,
-                        lrn: lrn,
+                        name: `${student.firstName} ${student.lastName}`,
+                        lrn: scannedLrn,
                         time: timeStr,
                         status: attendanceStatus,
-                        level: level,
-                        section: section
+                        level: student.level || "N/A",
+                        section: student.section || "N/A"
                     })
                 });
 
-                statusDiv.innerText = `✅ Verified: ${lastName}`;
+                statusDiv.innerText = `✅ Verified: ${student.lastName}`;
 
             } catch (err) {
                 console.error(err);
-                statusDiv.innerText = "❌ ERROR: INVALID DATA";
+                statusDiv.innerText = "❌ ERROR: INVALID QR CODE";
             }
         }
 
