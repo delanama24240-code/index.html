@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html>
 <head>
     <title>QR Attendance Scanner</title>
@@ -21,10 +22,10 @@
         .info-value { color: #ffffff; font-size: 1.1rem; margin-bottom: 10px; }
         #student-photo-display {
             width: 120px; height: 120px; object-fit: cover;
-            border: 3px solid #6f42c1; padding: 3px;
+            border: 3px solid #6f42c1; padding: 3px; background: #1a1b3a;
         }
-        /* Add a pulse effect when searching */
         .searching { opacity: 0.5; pointer-events: none; }
+        .status-msg { font-size: 1.2rem; font-weight: bold; }
     </style>
 </head>
 <body class="text-white">
@@ -33,7 +34,7 @@
             <div class="col-lg-5 text-center">
                 <h2 class="mb-4 fw-bold" style="color: #0dcaf0;">MAHS Scanner</h2>
                 <div id="reader" class="mx-auto shadow-lg" style="max-width: 500px;"></div>
-                <div id="status" class="mt-4 p-3 rounded glass-card">Ready to Scan...</div>
+                <div id="status" class="mt-4 p-3 rounded glass-card status-msg">Ready to Scan...</div>
             </div>
 
             <div class="col-lg-4">
@@ -60,7 +61,7 @@
                     <div id="disp-adviser" class="info-value">---</div>
 
                     <div class="mt-3 pt-3 border-top border-secondary d-flex justify-content-between align-items-center">
-                        <span class="info-label">Status</span>
+                        <span class="info-label">Attendance Status</span>
                         <span id="disp-status" class="badge rounded-pill px-3 py-2">---</span>
                     </div>
                 </div>
@@ -69,71 +70,59 @@
     </div>
 
     <script>
-        // Use your specific Firebase URL
         const FB_URL = "https://attendance-monitoring-84aeb-default-rtdb.firebaseio.com/";
+        let isProcessing = false;
 
         async function onScanSuccess(decodedText) {
+            if (isProcessing) return; // Prevent double scans
+            
             const statusDiv = document.getElementById('status');
             const infoCard = document.getElementById('student-card');
             
             try {
-                // 1. Validate if the QR is a JSON object (System Format)
+                isProcessing = true;
+                statusDiv.innerHTML = "🔍 Verifying QR...";
+
+                // 1. Parse QR Data
                 let qrData;
                 try {
                     qrData = JSON.parse(decodedText);
                 } catch (e) {
-                    statusDiv.innerHTML = "<span class='text-warning'>⚠️ INVALID SYSTEM QR</span>";
-                    infoCard.classList.add('d-none');
+                    showError("⚠️ INVALID QR FORMAT");
                     return;
                 }
 
                 const scannedLrn = qrData.lrn;
                 if (!scannedLrn) {
-                    statusDiv.innerHTML = "<span class='text-warning'>⚠️ WRONG QR FORMAT</span>";
+                    showError("⚠️ NOT A STUDENT QR");
                     return;
                 }
 
-                statusDiv.innerText = "🔍 Verifying Student...";
-                infoCard.classList.add('searching');
-
-                // 2. Fetch the FULL DATA from Firebase using the LRN
+                // 2. Database Verification (Only approve if registered)
                 const response = await fetch(`${FB_URL}students/${scannedLrn}.json`);
                 const student = await response.json();
 
-                // 3. Security Check: Does student exist in our DB?
                 if (!student) {
-                    statusDiv.innerHTML = "<span class='text-danger'>❌ UNAUTHORIZED / NOT FOUND</span>";
+                    showError("❌ ACCESS DENIED: UNREGISTERED STUDENT");
                     infoCard.classList.add('d-none');
                     return;
                 }
 
-                // 4. Update UI with verified data
-                document.getElementById('disp-name').innerText = `${student.firstName} ${student.lastName}`.trim();
-                document.getElementById('disp-lrn').innerText = student.lrn;
+                // 3. Update UI for Registered Student
+                displayStudentData(student);
                 
-                // Use 'level' as registered in your AddStudent payload
-                const levelSection = student.level || student.grade || "N/A";
-                document.getElementById('disp-level-section').innerText = levelSection;
-                document.getElementById('disp-adviser').innerText = student.adviser || "Not Assigned";
-                
-                // Handle the Base64 picture
-                document.getElementById('student-photo-display').src = student.picture || "";
-
-                infoCard.classList.remove('d-none', 'searching');
-
-                // 5. Attendance Logic (6:31 AM Late Threshold)
+                // 4. Logic for Attendance Time
                 const now = new Date();
                 const dateStr = now.toISOString().split('T')[0];
                 const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
                 
-                const isLate = (now.getHours() > 6 || (now.getHours() === 6 && now.getMinutes() >= 31));
+                // Late if after 6:30 AM
+                const isLate = (now.getHours() > 6 || (now.getHours() === 6 && now.getMinutes() > 30));
                 const attendanceStatus = isLate ? "Late" : "Present";
                 
-                const statusBadge = document.getElementById('disp-status');
-                statusBadge.innerText = attendanceStatus;
-                statusBadge.className = isLate ? "badge bg-danger" : "badge bg-success shadow-sm";
+                updateStatusBadge(isLate, attendanceStatus);
 
-                // 6. Log the Attendance to Firebase
+                // 5. Log to Firebase
                 await fetch(`${FB_URL}attendance/${dateStr}/${scannedLrn}.json`, {
                     method: 'PUT',
                     body: JSON.stringify({
@@ -141,24 +130,48 @@
                         lrn: scannedLrn,
                         time: timeStr,
                         status: attendanceStatus,
-                        level: levelSection,
-                        timestamp: ServerValue.TIMESTAMP // Optional: if you use FB SDK
+                        level: student.level || "N/A"
                     })
                 });
 
                 statusDiv.innerHTML = `<span class="text-success">✅ Welcome, ${student.lastName}!</span>`;
-
+                
             } catch (err) {
-                console.error("Scan Error:", err);
-                statusDiv.innerText = "❌ Scanner Error. Please try again.";
+                console.error(err);
+                showError("❌ CONNECTION ERROR");
+            } finally {
+                // Pause for 3 seconds before allowing next scan
+                setTimeout(() => { isProcessing = false; }, 3000);
             }
         }
 
-        // Initialize Scanner
+        function showError(msg) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<span class="text-danger">${msg}</span>`;
+            document.getElementById('student-card').classList.add('d-none');
+            isProcessing = false;
+        }
+
+        function displayStudentData(student) {
+            const infoCard = document.getElementById('student-card');
+            infoCard.classList.remove('d-none');
+            
+            document.getElementById('disp-name').innerText = `${student.firstName} ${student.lastName}`;
+            document.getElementById('disp-lrn').innerText = student.lrn;
+            document.getElementById('disp-level-section').innerText = student.level || "N/A";
+            document.getElementById('disp-adviser').innerText = student.adviser || "Not Assigned";
+            document.getElementById('student-photo-display').src = student.picture || "https://via.placeholder.com/120?text=No+Photo";
+        }
+
+        function updateStatusBadge(isLate, status) {
+            const statusBadge = document.getElementById('disp-status');
+            statusBadge.innerText = status;
+            statusBadge.className = isLate ? "badge bg-danger shadow-sm" : "badge bg-success shadow-sm";
+        }
+
         let scanner = new Html5QrcodeScanner("reader", { 
-            fps: 15, // Faster frame rate for smoother scanning
-            qrbox: { width: 250, height: 250 },
-            aspectRatio: 1.0 
+            fps: 10, 
+            qrbox: { width: 250, height: 250 }
         });
         scanner.render(onScanSuccess);
     </script>
