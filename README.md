@@ -4,7 +4,8 @@
                 <div class="mt-3">
                     <p><strong>Name:</strong> <span id="disp-name">---</span></p>
                     <p><strong>LRN:</strong> <span id="disp-lrn">---</span></p>
-                    <p><strong>Level & Section:</strong> <span id="disp-level">---</span></p>
+                    <p><strong>Level:</strong> <span id="disp-level">---</span></p>
+                    <p><strong>Section:</strong> <span id="disp-section">---</span></p>
                     <hr>
                     <p><strong>Status:</strong> <span id="disp-status" class="badge bg-success">---</span></p>
                 </div>
