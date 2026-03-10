@@ -139,7 +139,7 @@
                 const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
                 
                 // Set Late if 6:31 AM or later
-                const isLate = (now.getHours() > 6 || (now.getHours() === 6 && now.getMinutes() >= 31));
+                const isLate = (now.getHours() > 8 || (now.getHours() ===8 && now.getMinutes() >= 31));
                 const attendanceStatus = isLate ? "LATE" : "PRESENT";
 
                 // 4. Update ID Card UI
