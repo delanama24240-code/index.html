@@ -1,5 +1,6 @@
 
 <html>
+<h1>SORASCAN</h1>
 <head>
     <title>MAHS Attendance Scanner</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
