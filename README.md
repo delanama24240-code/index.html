@@ -1,4 +1,4 @@
-
+<!DOCTYPE html>
 <html>
 
 <head>
@@ -13,27 +13,55 @@
             min-height: 100vh;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
+
         .glass-card {
             background: rgba(255, 255, 255, 0.05);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 20px;
         }
-        #reader { 
-            border-radius: 20px; 
-            overflow: hidden; 
-            border: 2px solid rgba(0, 255, 255, 0.3) !important; 
+
+        #reader {
+            border-radius: 20px;
+            overflow: hidden;
+            border: 2px solid rgba(0, 255, 255, 0.3) !important;
         }
+
         /* ID Card Styling */
-        .info-label { color: #0dcaf0; font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; }
-        .info-value { color: #ffffff; font-size: 1.1rem; margin-bottom: 12px; font-weight: 500; }
+        .info-label {
+            color: #0dcaf0;
+            font-weight: 700;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .info-value {
+            color: #ffffff;
+            font-size: 1.1rem;
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+
         #student-photo-display {
-            width: 140px; height: 140px; object-fit: cover;
-            border: 4px solid #3a8dff; padding: 3px; background: #1a1b3a;
+            width: 140px;
+            height: 140px;
+            object-fit: cover;
+            border: 4px solid #3a8dff;
+            padding: 3px;
+            background: #1a1b3a;
             box-shadow: 0 0 20px rgba(58, 141, 255, 0.3);
         }
-        .status-msg { font-size: 1.2rem; font-weight: bold; min-height: 60px; display: flex; align-items: center; justify-content: center; }
-        
+
+        .status-msg {
+            font-size: 1.2rem;
+            font-weight: bold;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
         /* Scanner UI Cleanup */
         #reader__dashboard_section_csr button {
             background: #3a8dff !important;
@@ -47,6 +75,7 @@
         }
     </style>
 </head>
+
 <body class="text-white">
     <div class="container py-5">
         <div class="row justify-content-center g-4">
@@ -61,7 +90,7 @@
                     <div class="text-center mb-4">
                         <img id="student-photo-display" src="" class="rounded-circle" alt="Student">
                     </div>
-                    
+
                     <div class="info-label">Full Name</div>
                     <div id="disp-name" class="info-value">---</div>
 
@@ -79,10 +108,13 @@
                     <div class="info-label">Adviser</div>
                     <div id="disp-adviser" class="info-value">---</div>
 
-                    <div class="mt-3 pt-3 border-top border-secondary d-flex justify-content-between align-items-center">
+                    <div class="mt-3 pt-3 border-top border-secondary d-flex justify-content-between align-items-end">
                         <div>
+                            <div class="info-label">Date Scanned</div>
+                            <div id="disp-date" class="text-white small mb-2">--/--/----</div>
+
                             <div class="info-label">Time In</div>
-                            <div id="disp-time" class="text-white fw-bold">--:--</div>
+                            <div id="disp-time" class="text-white fw-bold" style="font-size: 1.2rem;">--:--</div>
                         </div>
                         <div class="text-end">
                             <span id="disp-status" class="badge rounded-pill px-4 py-2" style="font-size: 0.9rem;">---</span>
@@ -94,21 +126,19 @@
     </div>
 
     <script>
-        // Update this with your actual Firebase URL if different
         const FB_URL = "https://attendance-monitoring-84aeb-default-rtdb.firebaseio.com/";
         let isProcessing = false;
 
         async function onScanSuccess(decodedText) {
-            if (isProcessing) return; 
-            
+            if (isProcessing) return;
+
             const statusDiv = document.getElementById('status');
             const infoCard = document.getElementById('student-card');
-            
+
             try {
                 isProcessing = true;
                 statusDiv.innerHTML = "🔍 VERIFYING REGISTRATION...";
 
-                // 1. Parse QR Data (from your generator: {fn, ln, gr, id})
                 let qrData;
                 try {
                     qrData = JSON.parse(decodedText);
@@ -117,13 +147,13 @@
                     return;
                 }
 
-                const scannedLrn = qrData.id || qrData.lrn; // Supports both keys
+                const scannedLrn = qrData.id || qrData.lrn;
                 if (!scannedLrn) {
                     showError("⚠️ NOT A STUDENT QR");
                     return;
                 }
 
-                // 2. Security Check: Verify against Firebase Registered Students
+                // Verify against Firebase
                 const response = await fetch(`${FB_URL}students/${scannedLrn}.json`);
                 const student = await response.json();
 
@@ -133,24 +163,36 @@
                     return;
                 }
 
-                // 3. Logic for Attendance Time (Late threshold 6:31 AM)
+                // --- Date and Time Calculations ---
                 const now = new Date();
-                const dateStr = now.toISOString().split('T')[0];
-                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
                 
-                // Set Late if 6:31 AM or later
-                const isLate = (now.getHours() > 8 || (now.getHours() ===8 && now.getMinutes() >= 31));
+                // Key for Firebase Path (YYYY-MM-DD)
+                const dateKey = now.toISOString().split('T')[0];
+                
+                // Format for UI Display (e.g., March 11, 2026)
+                const dateDisplay = now.toLocaleDateString('en-US', { 
+                    month: 'long', 
+                    day: 'numeric', 
+                    year: 'numeric' 
+                });
+                
+                // Format for Time
+                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+
+                // Late threshold 8:31 AM
+                const isLate = (now.getHours() > 8 || (now.getHours() === 8 && now.getMinutes() >= 31));
                 const attendanceStatus = isLate ? "LATE" : "PRESENT";
 
-                // 4. Update ID Card UI
-                displayIDCard(student, timeStr, attendanceStatus, isLate);
-                
-                // 5. Save to Attendance Log
-                await fetch(`${FB_URL}attendance/${dateStr}/${scannedLrn}.json`, {
+                // Update UI
+                displayIDCard(student, timeStr, dateDisplay, attendanceStatus, isLate);
+
+                // Save to Attendance Log
+                await fetch(`${FB_URL}attendance/${dateKey}/${scannedLrn}.json`, {
                     method: 'PUT',
                     body: JSON.stringify({
                         name: `${student.firstName} ${student.lastName}`,
                         lrn: scannedLrn,
+                        date: dateDisplay,
                         time: timeStr,
                         status: attendanceStatus,
                         grade: student.grade || "N/A"
@@ -158,26 +200,29 @@
                 });
 
                 statusDiv.innerHTML = `<span style="color: #2ecc71;">✅ ACCESS GRANTED: ${student.lastName}</span>`;
-                
+
             } catch (err) {
                 console.error(err);
                 showError("❌ DATABASE CONNECTION ERROR");
             } finally {
-                // Pause for 3 seconds to show info before resetting
+                // Pause for 3.5 seconds before allowing next scan
                 setTimeout(() => { isProcessing = false; }, 3500);
             }
         }
 
-        function displayIDCard(student, time, status, isLate) {
+        function displayIDCard(student, time, date, status, isLate) {
             const infoCard = document.getElementById('student-card');
             infoCard.classList.remove('d-none');
-            
+
             document.getElementById('disp-name').innerText = `${student.firstName} ${student.middleName || ''} ${student.lastName}`;
             document.getElementById('disp-lrn').innerText = student.lrn;
             document.getElementById('disp-level').innerText = student.grade || "N/A";
             document.getElementById('disp-adviser').innerText = student.adviser || "---";
-            document.getElementById('disp-time').innerText = time;
             
+            // New Date and Time Display
+            document.getElementById('disp-date').innerText = date;
+            document.getElementById('disp-time').innerText = time;
+
             const photoImg = document.getElementById('student-photo-display');
             photoImg.src = student.picture || "https://via.placeholder.com/140?text=NO+PHOTO";
 
@@ -194,12 +239,13 @@
         }
 
         // Initialize Scanner
-        let scanner = new Html5QrcodeScanner("reader", { 
-            fps: 15, 
+        let scanner = new Html5QrcodeScanner("reader", {
+            fps: 15,
             qrbox: { width: 250, height: 250 },
             aspectRatio: 1.0
         });
         scanner.render(onScanSuccess);
     </script>
 </body>
+
 </html>
